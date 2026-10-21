@@ -22,10 +22,10 @@ async def generate_with_perchance(prompt: str, style: str, count: str, ratio: st
         f"&ratio={ratio}"
     )
     async with async_playwright() as p:
+        # Принудительно скачиваем браузер, если его нет
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         await page.goto(url, wait_until="networkidle", timeout=120000)
-        # Ждём, пока генерация завершится
         await page.wait_for_function("window.__BOT_STATUS__ === 'done'", timeout=180000)
         result = await page.evaluate("window.__BOT_RESULT__")
         await browser.close()
@@ -41,9 +41,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Аниме", callback_data="style_anime"),
              InlineKeyboardButton("Фурри", callback_data="style_furry")],
             [InlineKeyboardButton("Реализм", callback_data="style_real"),
-             InlineKeyboardButton("Мультяшный", callback_data="style_cartoon")],
-            [InlineKeyboardButton("Демон/Крылья", callback_data="style_demon"),
-             InlineKeyboardButton("Стикмен", callback_data="style_stickman")]
+             InlineKeyboardButton("Мультяшный", callback_data="style_cartoon")]
         ]
         await update.message.reply_text("Выбери стиль:", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
@@ -102,13 +100,4 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
     app.add_handler(CallbackQueryHandler(button))
 
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"{WEBHOOK_URL}/webhook",
-        url_path="webhook",
-        drop_pending_updates=True
-    )
-
-if __name__ == "__main__":
-    main()
+    app
