@@ -4,6 +4,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.getenv("PORT", 10000))
+WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")  # Render сам даёт эту переменную
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Бот работает. Напиши что-нибудь.")
@@ -16,10 +18,17 @@ async def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT, echo))
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await asyncio.Event().wait()
+
+    # Устанавливаем webhook
+    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+
+    # Запускаем сервер
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=f"{WEBHOOK_URL}/webhook",
+        url_path="webhook"
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
