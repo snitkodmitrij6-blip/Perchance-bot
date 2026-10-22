@@ -1,103 +1,110 @@
 import os
-import asyncio
+import re
+from collections import deque
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from playwright.async_api import async_playwright
 
-TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.getenv("PORT", 10000))
-WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-user_data = {}
+NEGATIVE = "low quality, blurry, deformed, distorted, bad anatomy, bad hands, extra limbs, missing limbs, ugly, poorly drawn, watermark, text, signature, censored"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот работает. Напиши что-нибудь вроде «сгенерируй девушку фурри».")
+recent_prompts = deque(maxlen=8)
 
-async def generate_with_perchance(prompt: str, style: str, count: str, ratio: str):
-    url = (
-        f"https://perchance.org/ai-character-generator?bot=1"
-        f"&prompt={prompt.replace(' ', '+')}"
-        f"&style={style}"
-        f"&count={count}"
-        f"&ratio={ratio}"
-    )
-    async with async_playwright() as p:
-        # Принудительно скачиваем браузер, если его нет
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto(url, wait_until="networkidle", timeout=120000)
-        await page.wait_for_function("window.__BOT_STATUS__ === 'done'", timeout=180000)
-        result = await page.evaluate("window.__BOT_RESULT__")
-        await browser.close()
-        return result
+def build_prompt(user_text: str) -> str:
+    base = user_text.strip()
+    style = "highly detailed, masterpiece, best quality"
+    return f"{base}, {style}"
+
+def get_main_keyboard():
+    keyboard = [
+        [
+            InlineKeyboardButton("Аниме", callback_data="style_anime"),
+            InlineKeyboardButton("Реализм", callback_data="style_real"),
+            InlineKeyboardButton("Фурри", callback_data="style_furry"),
+        ],
+        [
+            InlineKeyboardButton("Квадрат", callback_data="shape_square"),
+            InlineKeyboardButton("Альбом", callback_data="shape_landscape"),
+            InlineKeyboardButton("Портрет", callback_data="shape_portrait"),
+        ],
+        [
+            InlineKeyboardButton("Последние", callback_data="show_recent"),
+            InlineKeyboardButton("Очистить", callback_data="clear_recent"),
+        ],
+        [InlineKeyboardButton("Открыть Perchance", url="https://perchance.org/ai-text-to-image-generator")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text or ""
-    user_id = update.effective_user.id
-
-    if any(word in text.lower() for word in ["сгенерируй", "изобрази", "нарисуй", "generate"]):
-        user_data[user_id] = {"prompt": text}
-        keyboard = [
-            [InlineKeyboardButton("Аниме", callback_data="style_anime"),
-             InlineKeyboardButton("Фурри", callback_data="style_furry")],
-            [InlineKeyboardButton("Реализм", callback_data="style_real"),
-             InlineKeyboardButton("Мультяшный", callback_data="style_cartoon")]
-        ]
-        await update.message.reply_text("Выбери стиль:", reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await update.message.reply_text(f"Ты написал: {text}")
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    data = query.data
-
-    if user_id not in user_data:
-        await query.edit_message_text("Начни заново — напиши запрос.")
+    message = update.message
+    if not message or not message.text or "@" not in message.text:
         return
 
-    if data.startswith("style_"):
-        style = data.split("_")[1]
-        user_data[user_id]["style"] = style
-        keyboard = [
-            [InlineKeyboardButton("1", callback_data="count_1"),
-             InlineKeyboardButton("2", callback_data="count_2")],
-            [InlineKeyboardButton("512x512", callback_data="ratio_512x512"),
-             InlineKeyboardButton("512x768", callback_data="ratio_512x768")]
-        ]
-        await query.edit_message_text(f"Стиль: {style}\nВыбери количество и формат:", reply_markup=InlineKeyboardMarkup(keyboard))
+    user_text = re.sub(r'@\w+', '', message.text).strip()
+    if not user_text:
+        await message.reply_text("Напиши, что сгенерировать.", reply_markup=get_main_keyboard())
+        return
 
-    elif data.startswith("count_") or data.startswith("ratio_"):
-        if data.startswith("count_"):
-            user_data[user_id]["count"] = data.split("_")[1]
-        else:
-            user_data[user_id]["ratio"] = data.replace("ratio_", "")
+    prompt = build_prompt(user_text)
+    recent_prompts.append(prompt)
 
-        info = user_data[user_id]
-        if "count" in info and "ratio" in info:
-            await query.edit_message_text("Генерирую... Это может занять 30–60 секунд.")
-            try:
-                result = await generate_with_perchance(
-                    info["prompt"], info["style"], info["count"], info["ratio"]
-                )
-                images = result.get("images", [])
-                if images:
-                    for img_url in images:
-                        await context.bot.send_photo(chat_id=query.message.chat_id, photo=img_url)
-                    await query.message.reply_text("Готово!")
-                else:
-                    await query.message.reply_text("Не удалось получить картинки.")
-            except Exception as e:
-                await query.message.reply_text(f"Ошибка генерации: {e}")
+    reply = (
+        f"**Промпт:**\n`{prompt}`\n\n"
+        f"**Негативный:**\n`{NEGATIVE}`"
+    )
+    await message.reply_text(reply, parse_mode="Markdown", reply_markup=get_main_keyboard())
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    style_map = {
+        "style_anime": ", anime style, vibrant colors",
+        "style_real": ", photorealistic, realistic lighting, sharp focus",
+        "style_furry": ", furry, anthropomorphic, detailed fur",
+        "shape_square": " (квадрат)",
+        "shape_landscape": " (альбомная ориентация)",
+        "shape_portrait": " (портретная ориентация)",
+    }
+
+    if data == "show_recent":
+        if not recent_prompts:
+            await query.message.reply_text("Нет сохранённых промптов.")
+            return
+        text = "**Последние промпты:**\n\n"
+        for i, p in enumerate(reversed(recent_prompts), 1):
+            short = p[:100] + "..." if len(p) > 100 else p
+            text += f"{i}. `{short}`\n\n"
+        await query.message.reply_text(text, parse_mode="Markdown")
+        return
+
+    if data == "clear_recent":
+        recent_prompts.clear()
+        await query.message.reply_text("История очищена.")
+        return
+
+    if data in style_map and recent_prompts:
+        new_prompt = recent_prompts[-1] + style_map[data]
+        recent_prompts.append(new_prompt)
+        await query.message.reply_text(
+            f"**Обновлённый промпт:**\n`{new_prompt}`\n\n**Негативный:**\n`{NEGATIVE}`",
+            parse_mode="Markdown",
+            reply_markup=get_main_keyboard()
+        )
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Напиши запрос и упомяни меня. Я сделаю промпт и дам кнопки.",
+        reply_markup=get_main_keyboard()
+    )
 
 def main():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & \~filters.COMMAND, handle_message))
+    app.run_polling()
 
-    app
+if __name__ == "__main__":
+    main()
