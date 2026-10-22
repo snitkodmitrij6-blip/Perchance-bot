@@ -4,7 +4,7 @@ from collections import deque
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 
 NEGATIVE = "low quality, blurry, deformed, distorted, bad anatomy, bad hands, extra limbs, missing limbs, ugly, poorly drawn, watermark, text, signature, censored"
 
