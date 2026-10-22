@@ -1,10 +1,13 @@
 import os
 import re
+import asyncio
 from collections import deque
+from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.getenv("PORT", 10000))
 
 NEGATIVE = "low quality, blurry, deformed, distorted, bad anatomy, bad hands, extra limbs, missing limbs, ugly, poorly drawn, watermark, text, signature, censored"
 
@@ -99,12 +102,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_main_keyboard()
     )
 
-def main():
+async def health(request):
+    return web.Response(text="OK")
+
+async def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
-    app.run_polling()
+
+    # Запускаем бота
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    # Открываем порт, чтобы Render не убивал процесс
+    web_app = web.Application()
+    web_app.router.add_get("/", health)
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+
+    # Держим процесс живым
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
