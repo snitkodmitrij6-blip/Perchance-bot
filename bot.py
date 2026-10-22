@@ -40,10 +40,21 @@ def get_main_keyboard():
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    if not message or not message.text or "@" not in message.text:
+    if not message or not message.text:
         return
 
-    user_text = re.sub(r'@\w+', '', message.text).strip()
+    chat_type = message.chat.type
+    text = message.text
+
+    # В группе отвечаем только если упомянули бота
+    if chat_type in ("group", "supergroup"):
+        if "@" not in text:
+            return
+        user_text = re.sub(r'@\w+', '', text).strip()
+    else:
+        # В личке отвечаем на любое сообщение
+        user_text = text.strip()
+
     if not user_text:
         await message.reply_text("Напиши, что сгенерировать.", reply_markup=get_main_keyboard())
         return
@@ -98,7 +109,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Напиши запрос и упомяни меня. Я сделаю промпт и дам кнопки.",
+        "Напиши запрос. В личке я отвечаю сразу, в группе — только если меня упомянуть.",
         reply_markup=get_main_keyboard()
     )
 
