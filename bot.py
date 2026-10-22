@@ -34,7 +34,7 @@ def get_main_keyboard():
             InlineKeyboardButton("Последние", callback_data="show_recent"),
             InlineKeyboardButton("Очистить", callback_data="clear_recent"),
         ],
-        [InlineKeyboardButton("Открыть Perchance", url="https://perchance.org/ai-text-to-image-generator")]
+        [InlineKeyboardButton("Открыть Perchance", url="https://perchance.org/in1shhj717")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -111,12 +111,10 @@ async def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
-    # Запускаем бота
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
 
-    # Открываем порт, чтобы Render не убивал процесс
     web_app = web.Application()
     web_app.router.add_get("/", health)
     runner = web.AppRunner(web_app)
@@ -124,7 +122,6 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-    # Держим процесс живым
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
