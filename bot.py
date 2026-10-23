@@ -8,6 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", 10000))
+BOT_USERNAME = "NSFW_perchance_bot"
 
 NEGATIVE = "low quality, blurry, deformed, distorted, bad anatomy, bad hands, extra limbs, missing limbs, ugly, poorly drawn, watermark, text, signature, censored"
 
@@ -46,13 +47,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = message.chat.type
     text = message.text
 
-    # В группе отвечаем только если упомянули бота
     if chat_type in ("group", "supergroup"):
-        if "@" not in text:
+        if f"@{BOT_USERNAME}" not in text:
             return
-        user_text = re.sub(r'@\w+', '', text).strip()
+        user_text = re.sub(rf'@{BOT_USERNAME}', '', text, flags=re.IGNORECASE).strip()
     else:
-        # В личке отвечаем на любое сообщение
         user_text = text.strip()
 
     if not user_text:
@@ -95,45 +94,4 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "clear_recent":
         recent_prompts.clear()
-        await query.message.reply_text("История очищена.")
-        return
-
-    if data in style_map and recent_prompts:
-        new_prompt = recent_prompts[-1] + style_map[data]
-        recent_prompts.append(new_prompt)
-        await query.message.reply_text(
-            f"**Обновлённый промпт:**\n`{new_prompt}`\n\n**Негативный:**\n`{NEGATIVE}`",
-            parse_mode="Markdown",
-            reply_markup=get_main_keyboard()
-        )
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Напиши запрос. В личке я отвечаю сразу, в группе — только если меня упомянуть.",
-        reply_markup=get_main_keyboard()
-    )
-
-async def health(request):
-    return web.Response(text="OK")
-
-async def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-
-    web_app = web.Application()
-    web_app.router.add_get("/", health)
-    runner = web.AppRunner(web_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        await query.message.reply_
