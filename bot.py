@@ -94,4 +94,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "clear_recent":
         recent_prompts.clear()
-        await query.message.reply_
+        await query.message.reply_text("История очищена.")
+        return
+
+    if data in style_map and recent_prompts:
+        new_prompt = recent_prompts[-1] + style_map[data]
+        recent_prompts.append(new_prompt)
+        await query.message.reply_text(
+            f"**Обновлённый промпт:**\n`{new_prompt}`\n\n**Негативный:**\n`{NEGATIVE}`",
+            parse_mode="Markdown",
+            reply_markup=get_main_keyboard()
+        )
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Напиши запрос. В личке отвечаю сразу, в группе — только если меня упомянуть.",
+        reply_markup=get_main_keyboard()
+    )
+
+async def health(request):
+    return web.Response(text="OK")
+
+async def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    web_app = web.Application()
+    web_app.router.add_get("/", health)
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
